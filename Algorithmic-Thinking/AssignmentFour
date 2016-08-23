@@ -1,0 +1,389 @@
+"""
+Provide code and solution for Application 4
+"""
+
+DESKTOP = True
+
+import math
+import random
+import urllib2
+
+
+if DESKTOP:
+    import matplotlib.pyplot as plt
+else:
+    import simpleplot
+    import userXX_XXXXXXX as student
+    
+
+# URLs for data files
+PAM50_URL = "http://storage.googleapis.com/codeskulptor-alg/alg_PAM50.txt"
+HUMAN_EYELESS_URL = "http://storage.googleapis.com/codeskulptor-alg/alg_HumanEyelessProtein.txt"
+FRUITFLY_EYELESS_URL = "http://storage.googleapis.com/codeskulptor-alg/alg_FruitflyEyelessProtein.txt"
+CONSENSUS_PAX_URL = "http://storage.googleapis.com/codeskulptor-alg/alg_ConsensusPAXDomain.txt"
+WORD_LIST_URL = "http://storage.googleapis.com/codeskulptor-assets/assets_scrabble_words3.txt"
+
+def build_scoring_matrix(alphabet, diag_score, off_diag_score, dash_score):
+    """
+    Takes as input a set of characters alphabet and three scores diag_score, 
+    off_diag_score, and dash_score. The function returns a dictionary of 
+    dictionaries whose entries are indexed by pairs of characters in alphabet plus '-'.
+    """
+
+    alphabet_w_dash = set([])
+    alphabet_w_dash = alphabet.copy()
+    alphabet_w_dash.add('-')
+   
+    scoring_matrix = {}
+    for row in alphabet_w_dash:
+        scoring_matrix[row] = {}
+        for idx in alphabet_w_dash:
+            if row == idx:
+                scoring_matrix[row][idx] = diag_score
+            if row == '-' or  idx == '-':
+                scoring_matrix[row][idx] = dash_score
+            elif row != idx:
+                scoring_matrix[row][idx] = off_diag_score
+
+    return scoring_matrix
+
+def compute_alignment_matrix(seq_x, seq_y, scoring_matrix, global_flag):
+    """
+    Takes as input two sequences seq_x and seq_y whose elements share a common 
+    alphabet with the scoring matrix scoring_matrix. The function computes and 
+    returns the alignment matrix for seq_x and seq_y
+    """
+
+    alignment = [[0 for dummycol in range(len(seq_y)+1)] 
+                           for dummyrow in range(len(seq_x)+1)]
+    
+    for idx in range(1, len(seq_x)+1):
+        alignment[idx][0] = alignment[idx-1][0] + scoring_matrix[seq_x[idx-1]]['-']
+        if global_flag == False and alignment[idx][0] < 0:
+            alignment[idx][0] = 0
+    for jdx in range(1, len(seq_y)+1):
+        alignment[0][jdx] = alignment[0][jdx-1] + scoring_matrix['-'][seq_y[jdx-1]]
+        if global_flag == False and alignment[0][jdx] < 0:
+            alignment[0][jdx] = 0
+    for idx in range(1, len(seq_x)+1):
+        for jdx in range(1, len(seq_y)+1):
+            alignment[idx][jdx] = max(
+                                      alignment[idx-1][jdx-1] + scoring_matrix[seq_x[idx-1]][seq_y[jdx-1]],
+                                      alignment[idx-1][jdx] + scoring_matrix[seq_x[idx-1]]['-'],
+                                      alignment[idx][jdx-1] + scoring_matrix['-'][seq_y[jdx-1]])
+            if global_flag == False and alignment[idx][jdx] < 0:
+                alignment[idx][jdx] = 0
+    
+    return alignment
+
+def compute_global_alignment(seq_x, seq_y, scoring_matrix, alignment_matrix):
+    """
+    Takes as input two sequences seq_x and seq_y whose elements share a common alphabet
+    with the scoring matrix scoring_matrix. This function computes a global alignment 
+    of seq_x and seq_y using the global alignment matrix alignment_matrix.
+    """
+    
+    idx = len(seq_x)
+    jdx = len(seq_y)
+    seq_x_align = ''
+    seq_y_align = ''
+    
+    while idx != 0 and jdx != 0:
+        if alignment_matrix[idx][jdx] == alignment_matrix[idx-1][jdx-1] + scoring_matrix[seq_x[idx-1]][seq_y[jdx-1]]:
+            seq_x_align = seq_x[idx-1] + seq_x_align
+            seq_y_align = seq_y[jdx-1] + seq_y_align
+            idx = idx - 1
+            jdx = jdx - 1
+        else:
+            if alignment_matrix[idx][jdx] == alignment_matrix[idx-1][jdx] + scoring_matrix[seq_x[idx-1]]['-']:
+                seq_x_align = seq_x[idx-1] + seq_x_align
+                seq_y_align = '-' + seq_y_align
+                idx = idx - 1
+            else:
+                seq_x_align = '-' + seq_x_align
+                seq_y_align = seq_y[jdx-1] + seq_y_align
+                jdx = jdx - 1
+    while idx != 0:
+        seq_x_align = seq_x[idx-1] + seq_x_align
+        seq_y_align = '-' + seq_y_align
+        idx = idx - 1
+    while jdx != 0:
+        seq_x_align = '-' + seq_x_align
+        seq_y_align = seq_y[jdx-1] + seq_y_align
+        jdx = jdx -1
+    return (alignment_matrix[len(seq_x)][len(seq_y)], seq_x_align, seq_y_align)
+               
+def compute_local_alignment(seq_x, seq_y, scoring_matrix, alignment_matrix):
+    """
+    Takes as input two sequences seq_x and seq_y whose elements share a common 
+    alphabet with the scoring matrix scoring_matrix. This function computes a local 
+    alignment of seq_x and seq_y using the local alignment matrix alignment_matrix.
+    """
+    # find location of maximum value in alignment matrix
+    max_value = 0
+    x_coord, y_coord = (0,0)
+    for idx in range(1, len(seq_x)+1):
+        for jdx in range(1, len(seq_y)+1):
+            if alignment_matrix[idx][jdx] > max_value:
+                max_value = alignment_matrix[idx][jdx]
+                x_coord, y_coord = idx, jdx
+    
+    idx = x_coord
+    jdx = y_coord
+    seq_x_align = ''
+    seq_y_align = ''
+    while alignment_matrix[idx][jdx] != 0:
+        if alignment_matrix[idx][jdx] == alignment_matrix[idx-1][jdx-1] + scoring_matrix[seq_x[idx-1]][seq_y[jdx-1]]:
+            seq_x_align = seq_x[idx-1] + seq_x_align
+            seq_y_align = seq_y[jdx-1] + seq_y_align
+            idx = idx - 1
+            jdx = jdx - 1
+        else:
+            if alignment_matrix[idx][jdx] == alignment_matrix[idx-1][jdx] + scoring_matrix[seq_x[idx-1]]['-']:
+                seq_x_align = seq_x[idx-1] + seq_x_align
+                seq_y_align = '-' + seq_y_align
+                idx = idx - 1
+            else:
+                seq_x_align = '-' + seq_x_align
+                seq_y_align = seq_y[jdx-1] + seq_y_align
+                jdx = jdx - 1
+    
+    return (max_value, seq_x_align, seq_y_align)    
+
+###############################################
+# provided code
+
+def read_scoring_matrix(filename):
+    """
+    Read a scoring matrix from the file named filename.  
+
+    Argument:
+    filename -- name of file containing a scoring matrix
+
+    Returns:
+    A dictionary of dictionaries mapping X and Y characters to scores
+    """
+    scoring_dict = {}
+    scoring_file = urllib2.urlopen(filename)
+    ykeys = scoring_file.readline()
+    ykeychars = ykeys.split()
+    for line in scoring_file.readlines():
+        vals = line.split()
+        xkey = vals.pop(0)
+        scoring_dict[xkey] = {}
+        for ykey, val in zip(ykeychars, vals):
+            scoring_dict[xkey][ykey] = int(val)
+    return scoring_dict
+
+
+
+
+def read_protein(filename):
+    """
+    Read a protein sequence from the file named filename.
+
+    Arguments:
+    filename -- name of file containing a protein sequence
+
+    Returns:
+    A string representing the protein
+    """
+    protein_file = urllib2.urlopen(filename)
+    protein_seq = protein_file.read()
+    protein_seq = protein_seq.rstrip()
+    return protein_seq
+
+
+def read_words(filename):
+    """
+    Load word list from the file named filename.
+
+    Returns a list of strings.
+    """
+    # load assets
+    word_file = urllib2.urlopen(filename)
+    
+    # read in files as string
+    words = word_file.read()
+    
+    # template lines and solution lines list of line string
+    word_list = words.split('\n')
+    print "Loaded a dictionary with", len(word_list), "words"
+    return word_list
+
+
+def quest1():
+    """
+    Read a protein sequence from the file named filename.
+    """
+    # load data
+    human_protein = read_protein(HUMAN_EYELESS_URL)
+    #print "h", human_protein
+    fruitfly_protein = read_protein(FRUITFLY_EYELESS_URL)
+    #print "f", fruitfly_protein
+    scoring_matrix = read_scoring_matrix(PAM50_URL)
+
+    # compute local sequences
+    alignment_matrix = compute_alignment_matrix(human_protein, fruitfly_protein, scoring_matrix, False)
+    #print "alignment_matrix", alignment_matrix
+    
+    local_alignment_sequence = compute_local_alignment(human_protein, fruitfly_protein, scoring_matrix, alignment_matrix)
+    print "local alignment", local_alignment_sequence
+    return local_alignment_sequence
+    
+      
+
+def quest2():
+    score, human, fruitfly = quest1()
+    
+    local_human = human.replace('-', '')
+    print "human_eyeless_seq", local_human
+    local_fruitfly = fruitfly.replace('-', '')
+    consensus_pax = read_protein(CONSENSUS_PAX_URL)
+    scoring_matrix = read_scoring_matrix(PAM50_URL)
+    
+    # compute global alignment of each local sequence vs PAX
+    alignment_matrix_human_pax = compute_alignment_matrix(local_human, consensus_pax, scoring_matrix, True)
+    #rint "human pax", alignment_matrix_human_pax
+    #def compute_global_alignment(seq_x, seq_y, scoring_matrix, alignment_matrix):
+    global_alignment_human_pax = compute_global_alignment(local_human, consensus_pax, scoring_matrix, alignment_matrix_human_pax)
+    print "global alignment human pax", global_alignment_human_pax
+    
+    print global_alignment_human_pax[1]
+    print global_alignment_human_pax[2]
+    compute_similarity(global_alignment_human_pax[1], global_alignment_human_pax[2])
+    
+    
+    alignment_matrix_fruitfly_pax = compute_alignment_matrix(local_fruitfly, consensus_pax, scoring_matrix, True)
+    global_alignment_fruitfly_pax = compute_global_alignment(local_fruitfly, consensus_pax, scoring_matrix, alignment_matrix_fruitfly_pax)
+    print "global fruitfly pax", global_alignment_fruitfly_pax
+    compute_similarity(global_alignment_fruitfly_pax[1], global_alignment_fruitfly_pax[2])
+    
+
+def compute_similarity(str1, str2):
+    count = 0
+    print "len1", len(str1)
+    print "len2", len(str2)
+    for idx in range(0, len(str1)):
+        #print "comparing", str1[idx], "with", str2[idx]
+        if str1[idx] == str2[idx]:
+            count = count + 1
+    
+    print "count", count
+    result = float(count) / len(str1)
+    print "percent", result
+    return result
+
+def generate_null_distribution(seq_x,seq_y, scoring_matrix, num_trials):
+    scoring_distribution = {}
+    
+      
+    for idx in range(0, num_trials):
+        seq_y_list = list(seq_y)
+        random.shuffle(seq_y_list)
+        rand_y = ''.join(seq_y_list)
+        alignment_matrix = compute_alignment_matrix(seq_x, rand_y, scoring_matrix, False)
+        score, seq_x_align ,seq_y_align  = compute_local_alignment(seq_x, rand_y, scoring_matrix, alignment_matrix)
+        #print "score", score
+        if not score in scoring_distribution:
+            scoring_distribution[score] = 1
+        else:
+            scoring_distribution[score] += 1
+
+    return scoring_distribution
+    
+
+    
+            
+def quest3():
+    print "question 3"
+    human_protein = read_protein(HUMAN_EYELESS_URL)
+    fruitfly_protein = read_protein(FRUITFLY_EYELESS_URL)
+    scoring_matrix = read_scoring_matrix(PAM50_URL)
+    distribution = generate_null_distribution(human_protein, fruitfly_protein, scoring_matrix, 1000)
+    
+    normalized_dist = {}
+    for score in distribution:
+        normalized_dist[score] = float(distribution[score])/1000
+    
+    plt.bar(normalized_dist.keys(), normalized_dist.values())
+
+    
+    title('Alignment score distribution for randomized protein sequence')
+    plt.xlabel('Local alignment scores')
+    plt.ylabel('Fraction of total trials')
+    return distribution
+    
+    
+def quest4():
+    distribution = quest3()
+    print "dist", distribution
+
+    #compute mean
+    sum_scores = 0
+    count_scores = 0
+    for score in distribution:
+        
+        sum_scores += score * distribution[score]
+        count_scores += distribution[score]
+    mean = float(sum_scores) / count_scores
+    print "mean", mean
+    
+    #compute standard deviation
+    sum_scores = 0
+    for score in distribution:
+        #print "summing" , distribution[score] * ((score - mean) ** 2) 
+        sum_scores += distribution[score] * ((score - mean) ** 2) 
+    #print "sum s far", sum_scores
+    #print "sum_scores / count", (sum_scores / count_scores)
+    std_dev = float(sum_scores / count_scores) ** (0.5)
+    print "standard deviation", std_dev
+
+def quest7():
+    alphabet_set = set(['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z'])
+
+    dist_scoring_matrix = build_scoring_matrix(alphabet_set, 2, 1, 0)
+    #print "score matrix", dist_scoring_matrix
+    
+    d1 = compute_alignment_matrix('bake', 'bake', dist_scoring_matrix, True)
+    print "alignment_matrix", d1
+    bb = compute_global_alignment('bake', 'bake', dist_scoring_matrix, d1)
+    print "bb", bb
+    
+    d2 = compute_alignment_matrix('kitten', 'sitting', dist_scoring_matrix, True)
+    print "bca", d2
+    bc = compute_global_alignment('kitten', 'sitting', dist_scoring_matrix, d2)
+    print "bc", bc
+
+
+def quest8():
+    # load data
+    word_list = read_words(WORD_LIST_URL )
+    #print "word list", word_list
+    #word_list = ['aa']
+    result = check_spelling('firefly', 2, word_list)
+    print "result", result
+        
+    
+def check_spelling(checked_word, dist, word_list):
+    alphabet_set = set(['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm', 'n', 'o', 'p', 'q', 'r', 's', 't', 'u', 'v', 'w', 'x', 'y', 'z'])
+    dist_scoring_matrix = build_scoring_matrix(alphabet_set, 2, 1, 0)
+
+    result = set()
+    for word in word_list:
+        alignment_matrix = compute_alignment_matrix(word, checked_word, dist_scoring_matrix, True)
+        score, str1, str2 = compute_global_alignment(word, checked_word, dist_scoring_matrix, alignment_matrix)
+        #print "score", score
+        edit_distance = len(word)+len(checked_word)-score
+        if edit_distance <= dist:
+            result.add(word)
+    return result
+    
+    
+    
+    
+#quest1()
+#quest2()
+#quest3()
+#quest4()
+quest8()
